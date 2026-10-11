@@ -1,11 +1,27 @@
 import hashlib
 import io
 from pathlib import Path
+import sys
 
 import numpy as np
 import cv2
 import streamlit as st
 from PIL import Image
+
+app_dir = Path(__file__).resolve().parent
+module_dirs = tuple(
+    dict.fromkeys(
+        (
+            app_dir,
+            app_dir / "Age Gender Detector",
+            Path.cwd(),
+            Path.cwd() / "Age Gender Detector",
+        )
+    )
+)
+for module_dir in module_dirs:
+    if (module_dir / "ml_features.py").is_file() and str(module_dir) not in sys.path:
+        sys.path.insert(0, str(module_dir))
 
 # Set page configuration
 st.set_page_config(
@@ -87,21 +103,50 @@ def load_traffic_detector():
 
 @st.cache_resource
 def load_face_age_models():
-    model_dir = Path(__file__).resolve().parent / "Age-and-Gender-Detection--main"
+    model_subdirectory = "Age-and-Gender-Detection--main"
+    app_dir = Path(__file__).resolve().parent
+    model_dirs = tuple(
+        dict.fromkeys(
+            (
+                app_dir / model_subdirectory,
+                app_dir / "Age Gender Detector" / model_subdirectory,
+                Path.cwd() / model_subdirectory,
+                Path.cwd() / "Age Gender Detector" / model_subdirectory,
+            )
+        )
+    )
+    model_files = (
+        "opencv_face_detector.pbtxt",
+        "opencv_face_detector_uint8.pb",
+        "age_deploy.prototxt",
+        "age_net.caffemodel",
+    )
+    model_dir = next(
+        (
+            directory
+            for directory in model_dirs
+            if all((directory / filename).is_file() for filename in model_files)
+        ),
+        model_dirs[0],
+    )
     face_config = model_dir / "opencv_face_detector.pbtxt"
     face_weights = model_dir / "opencv_face_detector_uint8.pb"
     age_config = model_dir / "age_deploy.prototxt"
     age_weights = model_dir / "age_net.caffemodel"
 
-    model_files = (
+    model_paths = (
         face_config,
         face_weights,
         age_config,
         age_weights,
     )
-    missing_files = [path.name for path in model_files if not path.is_file()]
+    missing_files = [path.name for path in model_paths if not path.is_file()]
     if missing_files:
-        st.error(f"Missing model files in {model_dir}: {', '.join(missing_files)}")
+        searched_dirs = ", ".join(str(directory) for directory in model_dirs)
+        st.error(
+            f"Missing model files. Searched {searched_dirs}; missing in {model_dir}: "
+            f"{', '.join(missing_files)}"
+        )
         return None
 
     try:
@@ -483,7 +528,8 @@ def main():
     st.caption(
         "The voice-age and hair-segmentation models are restricted to non-commercial "
         "research/evaluation use by their published licenses. Upload a clear 1–30 "
-        "second speech clip (WAV, MP3, or M4A). First use downloads pretrained models."
+        "second speech clip. WAV works directly; MP3 and M4A require PyAV to load "
+        "successfully. First use downloads pretrained models."
     )
     voice_file = st.file_uploader(
         "Upload a voice recording",
